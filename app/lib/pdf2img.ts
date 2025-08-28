@@ -15,8 +15,8 @@ async function loadPdfJs(): Promise<any> {
     isLoading = true;
     // @ts-expect-error - pdfjs-dist/build/pdf.mjs is not a module
     loadPromise = import("pdfjs-dist/build/pdf.mjs").then((lib) => {
-        // Set the worker source to use local file
-        lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+        // Ensure worker matches installed pdfjs version
+        lib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@5.4.54/build/pdf.worker.min.mjs";
         pdfjsLib = lib;
         isLoading = false;
         return lib;
@@ -28,6 +28,12 @@ async function loadPdfJs(): Promise<any> {
 export async function convertPdfToImage(
     file: File
 ): Promise<PdfConversionResult> {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+        return { imageUrl: "", file: null, error: "PDF conversion must run in browser" };
+    }
+    if (file.type !== "application/pdf") {
+        return { imageUrl: "", file: null, error: "Selected file is not a PDF" };
+    }
     try {
         const lib = await loadPdfJs();
 
@@ -35,17 +41,18 @@ export async function convertPdfToImage(
         const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
         const page = await pdf.getPage(1);
 
-        const viewport = page.getViewport({ scale: 4 });
+        const viewport = page.getViewport({ scale: 2 });
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d");
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
-        if (context) {
-            context.imageSmoothingEnabled = true;
-            context.imageSmoothingQuality = "high";
+        if (!context) {
+            return { imageUrl: "", file: null, error: "Canvas 2D context not available" };
         }
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
 
         await page.render({ canvasContext: context!, viewport }).promise;
 
